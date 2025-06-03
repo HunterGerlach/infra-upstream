@@ -1,33 +1,22 @@
-# syntax=docker/dockerfile:1.7-labs   # unlocks --security / --mount flags
+# syntax=docker/dockerfile:1.7-labs
 
-###############################################################################
-# Universal Blue bootc image for home-lab machines
-#
-#   FLAVOR=core    → ghcr.io/ublue-os/core:<FEDORA_VERSION>
-#   FLAVOR=bluefin → ghcr.io/ublue-os/bluefin:<FEDORA_VERSION>
-###############################################################################
-ARG FLAVOR=core
-ARG FEDORA_VERSION=40   # overridden per-flavour from the workflow matrix
+#── runtime build args injected by the workflow ───────────────────────────────
+ARG FLAVOR=bluefin          # bluefin (desktop) or ucore (server)
+ARG FEDORA_TAG=stable       # stable ▸ latest tested tag for the flavor
 
-FROM ghcr.io/ublue-os/${FLAVOR}:${FEDORA_VERSION}
+#── base image ────────────────────────────────────────────────────────────────
+FROM ghcr.io/ublue-os/${FLAVOR}:${FEDORA_TAG}
 
-# ───────────── image metadata ────────────────────────────────────────────────
-LABEL maintainer="Your Name <you@example.com>"
-LABEL org.opencontainers.image.vendor="Home Lab"
-LABEL org.opencontainers.image.title="ublue-${FLAVOR}"
-LABEL org.opencontainers.image.description="Custom bootc image for ${FLAVOR}"
-LABEL org.opencontainers.image.url="https://github.com/${GITHUB_REPOSITORY}"
+#── image metadata ────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="infra-upstream (${FLAVOR})"
 LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}"
 
-# ───────────── rpm-ostree layer ──────────────────────────────────────────────
+#── package layering (needs BuildKit labs) ────────────────────────────────────
 RUN --security=insecure --mount=type=cache,target=/var/cache/dnf \
     rpm-ostree install htop git \
  && rpm-ostree cleanup -m
 
-# ───────────── optional configs ──────────────────────────────────────────────
-# COPY ./etc /etc
+#── any extra files / tweaks here ─────────────────────────────────────────────
+# COPY etc /usr/etc               # example
 
-RUN echo "Custom build complete for ${FLAVOR}" > /etc/ublue-custom.txt
-
-# Default bootc entrypoint
 CMD ["/usr/lib/systemd/systemd"]
