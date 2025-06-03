@@ -1,17 +1,16 @@
 name: build-and-push
+
 on:
-  push: {branches: [main]}
+  push: { branches: [main] }
   workflow_dispatch:
-  schedule: [{cron: '37 3 * * *'}]   # daily
+  schedule: [{ cron: '37 3 * * *' }]   # daily rebuild for security updates
 
 permissions:
   contents: read
   packages: write
-  id-token: write     # provenance SBOM (disabled but future-proof)
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_REPO: ${{ github.repository }}   # huntergerlach/infra-upstream
 
 jobs:
   build:
@@ -19,36 +18,48 @@ jobs:
     strategy:
       matrix:
         include:
-          - {flavor: bluefin, fedora_tag: stable}
-          - {flavor: ucore,   fedora_tag: stable}   # server image
+          # desktop
+          - { flavor: bluefin, fedora_tag: stable }
+          # server
+          - { flavor: ucore,   fedora_tag: stable }
+
     steps:
-      - uses: actions/checkout@v4
+    # ── checkout ─────────────────────────────────────────────────────
+    - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-        with: {install: true}
+    # ── lowercase owner/repo once, export as IMAGE_REPO ──────────────
+    - name: Normalise repo name → lowercase
+      shell: bash
+      run: |
+        image_repo="${GITHUB_REPOSITORY,,}"   # bash parameter-expansion
+        echo "IMAGE_REPO=${image_repo}" >>"$GITHUB_ENV"
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    # ── buildx toolchain ─────────────────────────────────────────────
+    - uses: docker/setup-qemu-action@v3
+    - uses: docker/setup-buildx-action@v3
 
-      - name: Build & push bootc image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Containerfile
-          provenance: false            # bootc SBOM not needed for now
-          push: true
-          build-args: |
-            FLAVOR=${{ matrix.flavor }}
-            FEDORA_TAG=${{ matrix.fedora_tag }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-${{ github.sha }}
-          labels: |
-            org.opencontainers.image.title=${{ env.IMAGE_REPO }}
-            org.opencontainers.image.version=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+    # ── login to GHCR (uses GITHUB_TOKEN) ────────────────────────────
+    - uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # ── build + push ─────────────────────────────────────────────────
+    - name: Build & push ${{ matrix.flavor }}
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Containerfile
+        provenance: false
+        push: true
+        build-args: |
+          FLAVOR=${{ matrix.flavor }}
+          FEDORA_TAG=${{ matrix.fedora_tag }}
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-${{ github.sha }}
+        labels: |
+          org.opencontainers.image.title=${{ env.IMAGE_REPO }}
+          org.opencontainers.image.version=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
