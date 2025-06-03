@@ -4,7 +4,7 @@ name: smoke-test bootc image
 on:
   workflow_run:
     workflows: [ build-bootc ]
-    types:    [ completed ]
+    types: [ completed ]
 
 jobs:
   smoke-test:
@@ -16,8 +16,8 @@ jobs:
 
     env:
       REGISTRY: ghcr.io
-      IMAGE:    huntergerlach/infra-upstream
-      SHA_TAG:  ${{ github.event.workflow_run.head_sha }}
+      IMAGE: huntergerlach/infra-upstream
+      SHA_TAG: ${{ github.event.workflow_run.head_sha }}
 
     steps:
       - name: Login to GHCR
@@ -27,16 +27,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image (commit tag)
+      - name: Pull image
         run: docker pull $REGISTRY/$IMAGE:$SHA_TAG
 
       - name: Quick command check (htop)
         run: docker run --rm $REGISTRY/$IMAGE:$SHA_TAG htop --version
 
-      - name: Run neofetch for log
+      - name: Show fastfetch output
         run: |
-          echo "::group::neofetch output"
-          docker run --rm $REGISTRY/$IMAGE:$SHA_TAG neofetch --stdout
+          echo "::group::fastfetch"
+          docker run --rm $REGISTRY/$IMAGE:$SHA_TAG fastfetch --logo none --stdout
           echo "::endgroup::"
 
       - name: Inspect OCI labels
