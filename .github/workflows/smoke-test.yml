@@ -1,49 +1,81 @@
 # .github/workflows/smoke-test.yml
 name: smoke-test bootc image
 
+###############################################################################
+#  Trigger                                                                    #
+#  ─────────────────────────────────────────────────────────────────────────── #
+#  Runs automatically after *successful* completion of the build-bootc        #
+#  workflow.  (The name here must match the `name:` in build-bootc.yml)       #
+###############################################################################
 on:
   workflow_run:
     workflows: [ build-bootc ]
     types: [ completed ]
 
+###############################################################################
+#  Smoke-test job                                                             #
+###############################################################################
 jobs:
   smoke-test:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04          # any runner with Docker/Podman works
     permissions:
-      packages: read
+      packages: read               # pull from GHCR
       contents: read
 
     env:
       REGISTRY: ghcr.io
-      IMAGE: huntergerlach/infra-upstream
-      SHA_TAG: ${{ github.event.workflow_run.head_sha }}
+      IMAGE:    huntergerlach/infra-upstream
+      # commit-SHA tag that the build workflow always pushes
+      SHA_TAG:  ${{ github.event.workflow_run.head_sha }}
 
     steps:
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    # ────────────────────────────────────────────────────────────────────────
+    # authenticate to GHCR
+    # ────────────────────────────────────────────────────────────────────────
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image
-        run: docker pull $REGISTRY/$IMAGE:$SHA_TAG
+    # ────────────────────────────────────────────────────────────────────────
+    # pull the freshly-built image
+    # ────────────────────────────────────────────────────────────────────────
+    - name: Pull image (commit tag)
+      run: |
+        docker pull $REGISTRY/$IMAGE:$SHA_TAG
 
-      - name: Quick command check (htop)
-        run: docker run --rm $REGISTRY/$IMAGE:$SHA_TAG htop --version
+    # ────────────────────────────────────────────────────────────────────────
+    # trivial “does it start?” check – htop must run
+    # ────────────────────────────────────────────────────────────────────────
+    - name: htop should print version
+      run: |
+        docker run --rm $REGISTRY/$IMAGE:$SHA_TAG htop --version
 
-      - name: Show fastfetch output
-        run: |
-          echo "::group::fastfetch"
-          docker run --rm $REGISTRY/$IMAGE:$SHA_TAG fastfetch --logo none --stdout
-          echo "::endgroup::"
+    # ────────────────────────────────────────────────────────────────────────
+    # system summary for easy debugging (fastfetch)
+    # ────────────────────────────────────────────────────────────────────────
+    - name: Show fastfetch output
+      run: |
+        echo "::group::fastfetch"
+        # fastfetch already dumps to stdout; --pipe gives a concise one-liner
+        docker run --rm $REGISTRY/$IMAGE:$SHA_TAG fastfetch --logo none --pipe
+        echo "::endgroup::"
 
-      - name: Inspect OCI labels
-        run: |
-          skopeo inspect docker://$REGISTRY/$IMAGE:$SHA_TAG | \
-            jq '.Labels["org.opencontainers.image.source"]' | \
-            grep -q "https://github.com/HunterGerlach/infra-upstream"
+    # ────────────────────────────────────────────────────────────────────────
+    # verify the OCI metadata label we expect
+    # ────────────────────────────────────────────────────────────────────────
+    - name: Inspect OCI labels
+      run: |
+        skopeo inspect docker://$REGISTRY/$IMAGE:$SHA_TAG \
+          | jq -r '.Labels["org.opencontainers.image.source"]' \
+          | grep -q "https://github.com/HunterGerlach/infra-upstream"
 
-      - name: Confirm bootc is on PATH
-        run: docker run --rm $REGISTRY/$IMAGE:$SHA_TAG which bootc
+    # ────────────────────────────────────────────────────────────────────────
+    # confirm bootc CLI is present (quick sanity check)
+    # ────────────────────────────────────────────────────────────────────────
+    - name: Confirm bootc is on PATH
+      run: |
+        docker run --rm $REGISTRY/$IMAGE:$SHA_TAG which bootc
