@@ -1,0 +1,11 @@
+# Editor / IDE
+.vscode/
+.idea/
+
+# Build caches
+var/cache/
+*.rpm
+
+# GitHub workflow artifacts
+*.iso
+*.qcow2
