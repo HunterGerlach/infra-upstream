@@ -29,6 +29,7 @@ RUN --mount=type=cache,target=/var/cache/dnf \
     rpm-ostree install \
         htop \
         git \
+        neofetch \            # ← NEW: tiny system-info utility
     && rpm-ostree cleanup -m
 
 ###############################################################################
