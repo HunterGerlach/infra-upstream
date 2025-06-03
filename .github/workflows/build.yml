@@ -1,15 +1,8 @@
 # .github/workflows/build-bootc.yml
 name: Build bootc images
-
 on:
-  push:
-    branches: [ main ]
+  push: {branches: [main]}
   workflow_dispatch:
-
-permissions:
-  contents: read
-  packages: write
-  id-token: write   # provenance (disabled in build-push step)
 
 env:
   IMAGE_REGISTRY: ghcr.io
@@ -18,7 +11,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         include:
@@ -26,36 +18,38 @@ jobs:
             FEDORA_TAG:  stable
 
     steps:
-      # ── Checkout ──────────────────────────────────────────────────────
       - uses: actions/checkout@v4
 
-      # ── Multi-arch (QEMU) ─────────────────────────────────────────────
       - uses: docker/setup-qemu-action@v3
 
-      # ── Buildx builder with entitlements enabled ─────────────────────
-      - uses: docker/setup-buildx-action@v3
+      # ── builder with entitlements ──────────────────────────────────────
+      - id: buildx                       # <- save the builder name
+        uses: docker/setup-buildx-action@v3
         with:
-          driver-opts: network=host
+          driver-opts: |
+            network=host
           buildkitd-flags: |
             --allow-insecure-entitlement security.insecure
             --allow-insecure-entitlement network.host
 
-      # ── Login to GHCR ─────────────────────────────────────────────────
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Build & push ─────────────────────────────────────────────────
+      # ── build & push ───────────────────────────────────────────────────
       - uses: docker/build-push-action@v5
         with:
+          # Explicitly use the builder we just created
+          builder: ${{ steps.buildx.outputs.name }}
+
           context: .
           file: Containerfile
           push: true
           provenance: false
 
-          # >>> THIS is the critical bit <<<
+          # **one line per entitlement**
           allow: |
             security.insecure
             network.host
