@@ -1,7 +1,4 @@
-# =======================================================================
-#  Build bootc-style images based on uBlue “bluefin” and push to GHCR
-# =======================================================================
-
+# .github/workflows/build-bootc.yml
 name: Build bootc images
 
 on:
@@ -10,9 +7,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents:        read          # checkout
-  packages:        write         # push to GHCR
-  id-token:        write         # provenance sigstore (disabled for now)
+  contents: read
+  packages: write
+  id-token: write   # provenance (disabled in build-push step)
 
 env:
   IMAGE_REGISTRY: ghcr.io
@@ -27,45 +24,38 @@ jobs:
         include:
           - BASE_FLAVOR: bluefin
             FEDORA_TAG:  stable
-          # add more flavours / tags here if you like
 
     steps:
-      # ───────────────────────── checkout source ────────────────────────
-      - name: Checkout
-        uses: actions/checkout@v4
+      # ── Checkout ──────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
 
-      # ─────────────────────────── set up QEMU ──────────────────────────
-      - name: Set up QEMU (multi-arch)
-        uses: docker/setup-qemu-action@v3
+      # ── Multi-arch (QEMU) ─────────────────────────────────────────────
+      - uses: docker/setup-qemu-action@v3
 
-      # ───────────────────────── set up Buildx ──────────────────────────
-      - name: Set up Buildx builder
-        uses: docker/setup-buildx-action@v3
+      # ── Buildx builder with entitlements enabled ─────────────────────
+      - uses: docker/setup-buildx-action@v3
         with:
-          install: true
           driver-opts: network=host
           buildkitd-flags: |
             --allow-insecure-entitlement security.insecure
             --allow-insecure-entitlement network.host
 
-      # ─────────────────────────── docker login ─────────────────────────
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      # ── Login to GHCR ─────────────────────────────────────────────────
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─────────────────────── build & push image ───────────────────────
-      - name: Build and push bootc image
-        uses: docker/build-push-action@v5
+      # ── Build & push ─────────────────────────────────────────────────
+      - uses: docker/build-push-action@v5
         with:
           context: .
           file: Containerfile
           push: true
           provenance: false
 
-          # IMPORTANT — one entitlement *per line* (block scalar keeps the new-lines)
+          # >>> THIS is the critical bit <<<
           allow: |
             security.insecure
             network.host
