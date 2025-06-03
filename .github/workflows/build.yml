@@ -70,5 +70,4 @@ jobs:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          extra-args: |
-            --disable-content-trust   # optional; mirror of ucore action
+          extra-args: --disable-content-trust
