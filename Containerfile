@@ -3,36 +3,20 @@
 #  infra-upstream bootc derivative                                            #
 ###############################################################################
 
-###############################################################################
-# ───────────── build-time arguments ───────────────────────────────────────── #
-###############################################################################
-ARG FLAVOR=bluefin          # default when building locally
-ARG FEDORA_TAG=stable       # overridden by the CI matrix
+ARG FLAVOR=bluefin
+ARG FEDORA_TAG=stable
 
-###############################################################################
-# ───────────── base image ─────────────────────────────────────────────────── #
-###############################################################################
 FROM ghcr.io/ublue-os/${FLAVOR}:${FEDORA_TAG}
 
-###############################################################################
-# ───────────── image metadata ─────────────────────────────────────────────── #
-###############################################################################
 LABEL org.opencontainers.image.title="huntergerlach/infra-upstream" \
       org.opencontainers.image.source="https://github.com/HunterGerlach/infra-upstream"
 
-###############################################################################
-# ───────────── package layer ──────────────────────────────────────────────── #
-#  rpm-ostree needs extra caps that GH Actions blocks.  In CI we rely on      #
-#  the base image already being signed, so we just layer the extra RPMs.      #
-###############################################################################
+# ── extra user-space packages ───────────────────────────────────────────────
 RUN --mount=type=cache,target=/var/cache/dnf \
     rpm-ostree install \
         htop \
-        git \
-        neofetch \
+        git  \
+        fastfetch \
     && rpm-ostree cleanup -m
 
-###############################################################################
-# ───────────── runtime ────────────────────────────────────────────────────── #
-###############################################################################
 CMD ["/usr/bin/bash"]
