@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  FEDORA_VERSION: 40          # bump when Fedora rolls
+  REGISTRY: ghcr.io            # target registry (GHCR)
+  # No global FEDORA_VERSION now—version is set per flavour
 
 jobs:
   build:
@@ -15,25 +15,32 @@ jobs:
 
     strategy:
       matrix:
-        flavor: [core, bluefin]   # <-- hard-coded, no env lookup
+        include:
+          # Core image already published on Fedora 40
+          - flavor: core
+            fedora: 40
+          # Bluefin 40 not public yet → pin to 39 for now
+          - flavor: bluefin
+            fedora: 39
 
     steps:
-    # ── checkout ─────────────────────────────────────────────
-    - name: Checkout
+    # ───── checkout ───────────────────────────────────────────
+    - name: Checkout source
       uses: actions/checkout@v4
 
-    # ── lower-case repo for GHCR tags ────────────────────────
+    # ───── lower-case owner/repo for GHCR tags ───────────────
     - name: Normalise repo name
-      run: echo "IMAGE_REPO=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+      run: |
+        echo "IMAGE_REPO=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-    # ── buildx toolchain ─────────────────────────────────────
+    # ───── buildx toolchain ──────────────────────────────────
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
     - name: Set up Buildx
       uses: docker/setup-buildx-action@v3
 
-    # ── login to GHCR ────────────────────────────────────────
+    # ───── login to GHCR ─────────────────────────────────────
     - name: Login to GHCR
       uses: docker/login-action@v3
       with:
@@ -41,7 +48,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # ── build & push image ───────────────────────────────────
+    # ───── build & push image ────────────────────────────────
     - name: Build and push ${{ matrix.flavor }}
       uses: docker/build-push-action@v5
       with:
@@ -49,7 +56,7 @@ jobs:
         file: Containerfile
         build-args: |
           FLAVOR=${{ matrix.flavor }}
-          FEDORA_VERSION=${{ env.FEDORA_VERSION }}
+          FEDORA_VERSION=${{ matrix.fedora }}
         provenance: false
         push: true
         tags: |
