@@ -2,7 +2,6 @@
 name: Build bootc images
 
 on:
-  # Build on every push to main; run manually if needed.
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -11,18 +10,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Allow the job to push to GHCR
     permissions:
       contents: read
       packages: write
 
-    # ─────── environment constants ──────────────────────────────────────────
     env:
       IMAGE_REGISTRY: ghcr.io
-      IMAGE_NAME: huntergerlach/infra-upstream   # <org>/<repo>
+      IMAGE_NAME: huntergerlach/infra-upstream
 
-    # ─────── build matrix ───────────────────────────────────────────────────
-    # Add more flavours / tags here if you have them
     strategy:
       matrix:
         include:
@@ -30,17 +25,13 @@ jobs:
             FEDORA_TAG: stable
 
     steps:
-    # ─────────── checkout source ────────────────────────────────────────────
-    - name: Checkout repository
+    - name: Checkout
       uses: actions/checkout@v4
 
-    # ─────────── QEMU (for multi-arch; harmless if you stay on amd64) ──────
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
-    # ─────────── BuildKit builder with insecure entitlements enabled ───────
     - name: Set up Buildx
-      id: buildx
       uses: docker/setup-buildx-action@v3
       with:
         install: true
@@ -49,7 +40,6 @@ jobs:
           --allow-insecure-entitlement security.insecure
           --allow-insecure-entitlement network.host
 
-    # ─────────── log in to GitHub Container Registry ────────────────────────
     - name: Log in to GHCR
       uses: docker/login-action@v3
       with:
@@ -57,33 +47,26 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # ─────────── build & push the bootc/ostree image ────────────────────────
-    - name: Build and push bootc image
+    - name: Build & push bootc image
       uses: docker/build-push-action@v5
       with:
-        # Context & Dockerfile/Containerfile
         context: .
         file: Containerfile
-
-        # Produce and push the image
         push: true
-        provenance: false   # bootc images are reproducible; provenance optional
+        provenance: false
 
-        # Allow privileged RPM-OStree operations inside the build container
+        # ───── THIS IS THE IMPORTANT PART ─────
         allow: |
           security.insecure
           network.host
 
-        # Build-time arguments forwarded to the Containerfile
         build-args: |
           FLAVOR=${{ matrix.BASE_FLAVOR }}
           FEDORA_TAG=${{ matrix.FEDORA_TAG }}
 
-        # Target tags
         tags: |
           ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.BASE_FLAVOR }}-${{ matrix.FEDORA_TAG }}
           ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-        # GitHub Actions cache for layer reuse
         cache-from: type=gha
         cache-to:   type=gha,mode=max
