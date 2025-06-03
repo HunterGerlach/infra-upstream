@@ -1,7 +1,7 @@
-# .github/workflows/build-bootc.yml
-name: Build bootc images
+# .github/workflows/build-bluefin.yml
+name: build-bluefin
 on:
-  push: {branches: [main]}
+  push: { branches: [main] }
   workflow_dispatch:
 
 env:
@@ -9,58 +9,71 @@ env:
   IMAGE_NAME:     huntergerlach/infra-upstream
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - BASE_FLAVOR: bluefin
-            FEDORA_TAG:  stable
+  bluefin:
+    runs-on: ubuntu-24.04     # buildah-build requires >=22.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write         # (for cosign, optional)
 
     steps:
+      # 1️⃣  checkout
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      # 2️⃣  (optional) pull the base image first – helps on flaky networks
+      - name: Pre-pull uBlue base
+        run: |
+          podman pull ghcr.io/ublue-os/bluefin:stable || true
 
-      # ── builder with entitlements ──────────────────────────────────────
-      - id: buildx                       # <- save the builder name
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            network=host
-          buildkitd-flags: |
-            --allow-insecure-entitlement security.insecure
-            --allow-insecure-entitlement network.host
-
+      # 3️⃣  login to GHCR so the `podman push` inside buildah-build succeeds
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── build & push ───────────────────────────────────────────────────
-      - uses: docker/build-push-action@v5
+      # 4️⃣  metadata labels (same as before)
+      - id: meta
+        uses: docker/metadata-action@v5
         with:
-          # Explicitly use the builder we just created
-          builder: ${{ steps.buildx.outputs.name }}
+          images: ${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
+      # 5️⃣  **build** with Buildah
+      - id: build
+        uses: redhat-actions/buildah-build@v2
+        with:
+          containerfiles: |
+            ./Containerfile
           context: .
-          file: Containerfile
-          push: true
-          provenance: false
-
-          # **one line per entitlement**
-          allow: |
-            security.insecure
-            network.host
-
-          build-args: |
-            FLAVOR=${{ matrix.BASE_FLAVOR }}
-            FEDORA_TAG=${{ matrix.FEDORA_TAG }}
-
+          image: ${{ env.IMAGE_NAME }}
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.BASE_FLAVOR }}-${{ matrix.FEDORA_TAG }}
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            bluefin-stable
+            ${{ github.sha }}
+          build-args: |
+            FLAVOR=bluefin
+            FEDORA_TAG=stable
+          labels: ${{ steps.meta.outputs.labels }}
+          # OCI false → produce docker-media-type, matches GHCR expectations
+          oci: false
+          # layers=true + a cache action gives you incremental speed-ups
+          layers: true
 
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
+      # 6️⃣  push                 (buildah-build *can* push automatically,
+      #                             but retry wrappers are handy)
+      - name: Push to GHCR
+        uses: Wandalen/wretry.action@v3.8.0
+        with:
+          attempt_limit: 3
+          attempt_delay: 15000
+          action: redhat-actions/push-to-registry@v2
+          with: |
+            image: ${{ steps.build.outputs.image }}
+            tags:  ${{ steps.build.outputs.tags }}
+            registry: ${{ env.IMAGE_REGISTRY }}
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+            extra-args: |
+              --disable-content-trust
