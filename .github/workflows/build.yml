@@ -1,65 +1,84 @@
-name: build-and-push
+.github/workflows/build.yml
 
-on:
-  push: { branches: [main] }
-  workflow_dispatch:
-  schedule: [{ cron: '37 3 * * *' }]   # daily rebuild for security updates
+CI workflow that builds and pushes bootc‑based OCI images for each uBlue flavour.
 
-permissions:
-  contents: read
-  packages: write
+Uses BuildKit entitlements exactly the way the upstream uBlue projects do.
 
-env:
-  REGISTRY: ghcr.io
+name: Build bootc images
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          # desktop
-          - { flavor: bluefin, fedora_tag: stable }
-          # server
-          - { flavor: ucore,   fedora_tag: stable }
+on: push: branches: [main] pull_request: branches: [main] workflow_dispatch:
 
-    steps:
-    # ── checkout ─────────────────────────────────────────────────────
-    - uses: actions/checkout@v4
+-----------------------------------------------------------------------------
 
-    # ── lowercase owner/repo once, export as IMAGE_REPO ──────────────
-    - name: Normalise repo name → lowercase
-      shell: bash
-      run: |
-        image_repo="${GITHUB_REPOSITORY,,}"   # bash parameter-expansion
-        echo "IMAGE_REPO=${image_repo}" >>"$GITHUB_ENV"
+Global constants / secrets
 
-    # ── buildx toolchain ─────────────────────────────────────────────
-    - uses: docker/setup-qemu-action@v3
-    - uses: docker/setup-buildx-action@v3
+-----------------------------------------------------------------------------
 
-    # ── login to GHCR (uses GITHUB_TOKEN) ────────────────────────────
-    - uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+env: REGISTRY: ghcr.io IMAGE_REPO: huntergerlach/infra-upstream   # NOTE: must be lower‑case for GHCR
 
-    # ── build + push ─────────────────────────────────────────────────
-    - name: Build & push ${{ matrix.flavor }}
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: Containerfile
-        provenance: false
-        push: true
-        build-args: |
-          FLAVOR=${{ matrix.flavor }}
-          FEDORA_TAG=${{ matrix.fedora_tag }}
-        tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-latest
-          ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-${{ github.sha }}
-        labels: |
-          org.opencontainers.image.title=${{ env.IMAGE_REPO }}
-          org.opencontainers.image.version=${{ github.sha }}
-          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+permissions: contents: read packages: write
+
+jobs: bootc: runs-on: ubuntu-latest
+
+strategy:
+  fail-fast: false
+  matrix:
+    # ───── uBlue flavours you want to build ───────────────────────────────
+    flavor: [bluefin, core, ucore]
+    include:
+      - flavor: bluefin
+        fedora_tag: stable
+      - flavor: core
+        fedora_tag: stable
+      - flavor: ucore
+        fedora_tag: stable
+
+steps:
+  # ─────────────────── Pull source and set up build env ───────────────────
+  - name: Checkout source
+    uses: actions/checkout@v4
+
+  - name: Set up QEMU (multi‑arch emulation)
+    uses: docker/setup-qemu-action@v3
+
+  - name: Set up Buildx with insecure entitlements
+    id: buildx
+    uses: docker/setup-buildx-action@v3
+    with:
+      install: true
+      driver-opts: |
+        network=host
+        security.insecure=true
+
+  - name: Log in to GHCR
+    uses: docker/login-action@v3
+    with:
+      registry: ${{ env.REGISTRY }}
+      username: ${{ github.actor }}
+      password: ${{ secrets.GITHUB_TOKEN }}
+
+  # ───────────────────────── Build & push image ───────────────────────────
+  - name: Build & push
+    uses: docker/build-push-action@v5
+    with:
+      context: .
+      file: Containerfile
+      push: true
+      provenance: false            # Skip SBOM/provenance for faster builds
+      build-args: |
+        FLAVOR=${{ matrix.flavor }}
+        FEDORA_TAG=${{ matrix.fedora_tag }}
+      # Tell BuildKit we really want the extra capabilities granted above
+      allow: security.insecure,network.host
+
+      # Image tags
+      tags: |
+        ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-latest
+        ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ matrix.flavor }}-${{ github.sha }}
+
+      # OCI labels
+      labels: |
+        org.opencontainers.image.title=${{ env.IMAGE_REPO }}
+        org.opencontainers.image.version=${{ github.sha }}
+        org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
