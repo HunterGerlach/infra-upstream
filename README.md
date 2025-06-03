@@ -1,5 +1,7 @@
 # infra-upstream
 
+![CI](https://github.com/HunterGerlach/infra-upstream/actions/workflows/build-bootc.yml/badge.svg)
+
 bootc Images
 
 This repo builds two Fedora-based **bootable containers** using Universal Blue:
