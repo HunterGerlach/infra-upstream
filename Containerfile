@@ -6,8 +6,8 @@
 ###############################################################################
 # ───────────── build-time arguments ───────────────────────────────────────── #
 ###############################################################################
-ARG FLAVOR=bluefin              # default when building locally
-ARG FEDORA_TAG=stable           # overridden in CI matrix
+ARG FLAVOR=bluefin          # default when building locally
+ARG FEDORA_TAG=stable       # overridden by the CI matrix
 
 ###############################################################################
 # ───────────── base image ─────────────────────────────────────────────────── #
@@ -22,19 +22,14 @@ LABEL org.opencontainers.image.title="huntergerlach/infra-upstream" \
 
 ###############################################################################
 # ───────────── package layer ──────────────────────────────────────────────── #
-#  ⚠ rpm-ostree needs elevated capabilities that are blocked on GH Actions.  #
-#    Long-term we’ll migrate to a root-full DNF stage + `bootc commit`.       #
+#  rpm-ostree needs extra caps that GH Actions blocks.  In CI we rely on      #
+#  the base image already being signed, so we just layer the extra RPMs.      #
 ###############################################################################
 RUN --mount=type=cache,target=/var/cache/dnf \
     rpm-ostree install \
         htop \
         git \
     && rpm-ostree cleanup -m
-
-###############################################################################
-# ───────────── finalise bootc ─────────────────────────────────────────────── #
-###############################################################################
-RUN bootc finalize
 
 ###############################################################################
 # ───────────── runtime ────────────────────────────────────────────────────── #
