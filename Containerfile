@@ -19,7 +19,10 @@ LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}"
 # Layer RPM-OSTree packages
 ############################
 # --privileged required by rpm-ostree in container build
-RUN --privileged --mount=type=cache,target=/var/cache/dnf \
+RUN --security=insecure --mount=type=cache,target=/var/cache/dnf \
+     rpm-ostree install \
+         htop git \
+     && rpm-ostree cleanup -m
     rpm-ostree install \
         htop git \
     && rpm-ostree cleanup -m
