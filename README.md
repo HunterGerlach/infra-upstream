@@ -1,6 +1,7 @@
 # infra-upstream
 
-![CI](https://github.com/HunterGerlach/infra-upstream/actions/workflows/build-bootc.yml/badge.svg)
+![CI](https://github.com/HunterGerlach/infra-upstream/actions/workflows/build.yml/badge.svg)
+![CI](https://github.com/HunterGerlach/infra-upstream/actions/workflows/smoke-test.yml/badge.svg)
 
 bootc Images
 
